@@ -1,0 +1,28 @@
+(()=>{'use strict';
+const moves=[{name:'ยกแขนเหนือศีรษะ',short:'UP',glyph:'↑',color:'#f6a0c8'},{name:'กางแขนระดับไหล่',short:'SIDE',glyph:'↔',color:'#ffd18c'},{name:'ชี้ไปด้านหน้า',short:'FRONT',glyph:'➜',color:'#c9a6ff'},{name:'หุบแขนลง',short:'DOWN',glyph:'↓',color:'#b4e3b5'},{name:'หมุนแขน',short:'CIRCLE',glyph:'↻',color:'#a7c9ff'}];
+const $=id=>document.getElementById(id);const tracks=[$('track0'),$('track1')],pads=[$('pad0'),$('pad1')];
+function flower(move){return `<svg class="flower" viewBox="0 0 100 100" aria-hidden="true"><g fill="${move.color}" stroke="#fff" stroke-width="2.6">${Array.from({length:5},(_,i)=>`<ellipse cx="50" cy="27" rx="20" ry="24" transform="rotate(${i*72} 50 50)"/>`).join('')}</g><circle cx="50" cy="49" r="24" fill="${move.color}" stroke="#fff" stroke-width="2.5"/><path d="M39 32q4-4 8 0m9 0q4-4 8 0" stroke="#a45e86" stroke-width="2" stroke-linecap="round" fill="none"/><text x="50" y="67" text-anchor="middle" font-family="Arial,sans-serif" font-size="43" font-weight="bold" fill="#fff" stroke="#9d78a3" stroke-width="1.2" paint-order="stroke">${move.glyph}</text></svg>`}
+$('moves').innerHTML=moves.map(m=>`<div class="move">${flower(m).replace('class="flower"','')}<span>${m.name}</span></div>`).join('');
+let running=false,paused=false,elapsed=0,lastFrame=0,nextSpawn=0,score=0,combo=0,notes=[],pressed=[false,false],id=0,frame=0;
+const travel=3400,speed=0.165; // pixel per ms, adjusted to track size per frame
+const patterns=[{lane:0,move:0,dur:0},{lane:1,move:1,dur:2000},{lane:0,move:2,dur:0},{lane:1,move:3,dur:0},{lane:0,move:4,dur:3000},{lane:1,move:0,dur:3000},{lane:0,move:1,dur:2000},{lane:1,move:2,dur:0},{lane:0,move:3,dur:0},{lane:1,move:4,dur:2000}];
+let patternIndex=0;
+function setMessage(t){$('message').textContent=t}
+function updateScore(){ $('score').textContent=score.toLocaleString();$('combo').textContent=combo;}
+function reset(){running=false;paused=false;cancelAnimationFrame(frame);elapsed=0;lastFrame=0;nextSpawn=0;patternIndex=0;score=0;combo=0;id=0;pressed=[false,false];notes.forEach(n=>n.el.remove());notes=[];updateScore();$('clock').textContent='00:00';setMessage('Ready?');$('start').disabled=false;$('pause').disabled=true;$('pause').textContent='Ⅱ Pause';}
+function spawn(){const p=patterns[patternIndex++%patterns.length];const m=moves[p.move],el=document.createElement('div');el.className='note';el.innerHTML=(p.dur?`<div class="tail" style="--tail:${p.dur/1000*46}px"></div><div class="seconds">${p.dur/1000}s</div>`:'')+flower(m)+`<div class="label">${m.short}</div>`;tracks[p.lane].append(el);notes.push({...p,el,id:++id,hit:false,done:false,failed:false,holdStart:null,spawnTime:elapsed});}
+function hitY(lane){const t=tracks[lane];return t.clientHeight-58-34;} // center of target
+function noteY(n){const h=tracks[n.lane].clientHeight;return -92+(elapsed-n.spawnTime)/travel*(h-58+92);}
+function feedback(n,success){if(n.done)return;n.done=true;n.el.remove();if(success){score+=n.dur?150:100;combo++;setMessage(['PERFECT! ✨','CUTE! 🌸','GREAT! 💖'][combo%3]);const t=tracks[n.lane].querySelector('.target');t.classList.remove('flash');void t.offsetWidth;t.classList.add('flash');}else{combo=0;setMessage('MISS 🌧️')}updateScore()}
+function attempt(lane){if(!running||paused)return;const eligible=notes.filter(n=>!n.done&&n.lane===lane&&!n.hit).sort((a,b)=>Math.abs(noteY(a)-hitY(lane))-Math.abs(noteY(b)-hitY(lane)));const n=eligible[0];if(!n)return;const dist=Math.abs(noteY(n)-hitY(lane));if(dist>44)return;n.hit=true;if(n.dur){n.holdStart=elapsed;setMessage('HOLD! 💕');n.el.classList.add('good')}else feedback(n,true);}
+function release(lane){pressed[lane]=false;const n=notes.find(n=>n.lane===lane&&n.hit&&!n.done&&n.dur);if(n){const held=elapsed-n.holdStart;feedback(n,held>=n.dur-180)}}
+function down(lane){if(pressed[lane])return;pressed[lane]=true;pads[lane].style.background='#ffe19e';attempt(lane)}function up(lane){if(!pressed[lane])return;pads[lane].style.background='';release(lane)}
+function tick(now){if(!running||paused)return;if(!lastFrame)lastFrame=now;elapsed+=Math.min(now-lastFrame,60);lastFrame=now;$('clock').textContent=`${String(Math.floor(elapsed/60000)).padStart(2,'0')}:${String(Math.floor(elapsed/1000)%60).padStart(2,'0')}`;
+if(elapsed>=nextSpawn){spawn();nextSpawn+=1500;}
+for(const n of notes){if(n.done)continue;const y=noteY(n);n.el.style.top=(y-n.el.offsetHeight/2)+'px';if(n.hit&&n.dur){if(pressed[n.lane]&&elapsed-n.holdStart>=n.dur){feedback(n,true);continue}if(!pressed[n.lane]){feedback(n,false);continue}n.el.querySelector('.seconds').textContent=(Math.max(0,n.dur-(elapsed-n.holdStart))/1000).toFixed(1)+'s';}else if(!n.hit&&y>hitY(n.lane)+56){feedback(n,false)}}notes=notes.filter(n=>!n.done);frame=requestAnimationFrame(tick)}
+$('start').onclick=()=>{if(running)return;running=true;paused=false;lastFrame=0;$('start').disabled=true;$('pause').disabled=false;setMessage('LET’S GO! 🌷');frame=requestAnimationFrame(tick)};
+$('pause').onclick=()=>{if(!running)return;paused=!paused;$('pause').textContent=paused?'▶ Resume':'Ⅱ Pause';if(!paused){lastFrame=0;frame=requestAnimationFrame(tick)}else{cancelAnimationFrame(frame);setMessage('PAUSED 🌼')}};
+$('reset').onclick=reset;
+window.addEventListener('keydown',e=>{const l=e.code==='KeyA'?0:e.code==='KeyL'?1:-1;if(l>=0){e.preventDefault();down(l)}});window.addEventListener('keyup',e=>{const l=e.code==='KeyA'?0:e.code==='KeyL'?1:-1;if(l>=0){e.preventDefault();up(l)}});
+pads.forEach((p,l)=>{p.addEventListener('pointerdown',e=>{e.preventDefault();p.setPointerCapture(e.pointerId);down(l)});p.addEventListener('pointerup',()=>up(l));p.addEventListener('pointercancel',()=>up(l));p.addEventListener('lostpointercapture',()=>up(l))});
+reset();})();
